@@ -3,8 +3,8 @@ name: PR Reminders
 on:
   workflow_dispatch: 
   schedule:
-    - cron: '0 7 * * *'   # каждый день в 07:00 UTC (10:00 МСК)
-    - cron: '0 * * * *'   # каждый час
+    - cron: '0 7 * * *'   # every day in 07:00 UTC (09:00 Warsaw)
+    - cron: '0 * * * *'   # every hour
   pull_request:
     types: [opened]
 
@@ -75,11 +75,10 @@ jobs:
               pr = data["pull_request"]
               title = pr["title"]
               url = pr["html_url"]
-              print("📦 Новый Pull Request: <{url}|{title}>")
-              send_slack_message(f"📦 Новый Pull Request: <{url}|{title}>")
+              send_slack_message(f"👀 New Pull Request: <{url}|{title}>")
               exit(0)
 
-          # Если пришли через cron (schedule)
+          # If we get them from cron (schedule)
           prs = get_open_prs()
           for pr in prs:
               
@@ -97,7 +96,7 @@ jobs:
                   continue
 
               if age_days >= 2:
-                  send_slack_message(f"🔁 *2+ дня без review*: <{url}|{title}>")
+                  send_slack_message(f"🔁 *2+ days without review*: <{url}|{title}>")
               elif now.hour == 7:
-                  send_slack_message(f"🔔 *PR без review*: <{url}|{title}>")
+                  send_slack_message(f"🔔 *PR is without review*: <{url}|{title}>")
           EOF
