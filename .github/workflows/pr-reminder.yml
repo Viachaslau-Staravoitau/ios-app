@@ -1,0 +1,100 @@
+name: PR Reminders
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # каждый день в 07:00 UTC (10:00 МСК)
+    - cron: '0 * * * *'   # каждый час
+  pull_request:
+    types: [opened]
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: Run PR check and notify
+        env:
+          SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
+          SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PATH: ${{ github.event_path }}
+        run: |
+          python3 <<EOF
+          import os, json, requests
+          from datetime import datetime, timedelta
+
+          slack_token = os.environ["SLACK_TOKEN"]
+          slack_channel = os.environ["SLACK_CHANNEL"]
+          github_token = os.environ["GITHUB_TOKEN"]
+          repo = os.environ["REPO"]
+          event_name = os.environ["EVENT_NAME"]
+          event_path = os.environ["EVENT_PATH"]
+          now = datetime.utcnow()
+
+          def send_slack_message(message):
+              r = requests.post("https://slack.com/api/chat.postMessage", json={
+                  "channel": slack_channel,
+                  "text": message
+              }, headers={
+                  "Authorization": f"Bearer {slack_token}",
+                  "Content-Type": "application/json"
+              })
+              if not r.json().get("ok"):
+                  print("Slack error:", r.text)
+
+          def get_open_prs():
+              url = f"https://api.github.com/repos/{repo}/pulls"
+              headers = {
+                  "Authorization": f"Bearer {github_token}",
+                  "Accept": "application/vnd.github.v3+json"
+              }
+              return requests.get(url, headers=headers).json()
+
+          def get_reviews_and_comments(pr_number):
+              base_url = f"https://api.github.com/repos/{repo}"
+              headers = {
+                  "Authorization": f"Bearer {github_token}",
+                  "Accept": "application/vnd.github.v3+json"
+              }
+
+              reviews = requests.get(f"{base_url}/pulls/{pr_number}/reviews", headers=headers).json()
+              comments = requests.get(f"{base_url}/issues/{pr_number}/comments", headers=headers).json()
+              return reviews, comments
+
+          if event_name == "pull_request":
+              with open(event_path) as f:
+                  data = json.load(f)
+              pr = data["pull_request"]
+              title = pr["title"]
+              url = pr["html_url"]
+              send_slack_message(f"📦 Новый Pull Request: <{url}|{title}>")
+              exit(0)
+
+          # Если пришли через cron (schedule)
+          prs = get_open_prs()
+          for pr in prs:
+              number = pr["number"]
+              title = pr["title"]
+              url = pr["html_url"]
+              created_at = datetime.strptime(pr["created_at"], "%Y-%m-%dT%H:%M:%SZ")
+              age_days = (now - created_at).days
+
+              reviews, comments = get_reviews_and_comments(number)
+              has_review = any(r.get("state") in ["APPROVED", "COMMENTED"] for r in reviews)
+              has_comments = len(comments) > 0
+
+              if has_review or has_comments:
+                  continue
+
+              if age_days >= 2:
+                  send_slack_message(f"🔁 *2+ дня без review*: <{url}|{title}>")
+              elif now.hour == 7:
+                  send_slack_message(f"🔔 *PR без review*: <{url}|{title}>")
+          EOF
