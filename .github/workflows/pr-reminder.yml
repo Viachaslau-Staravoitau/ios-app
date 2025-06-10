@@ -75,12 +75,14 @@ jobs:
               pr = data["pull_request"]
               title = pr["title"]
               url = pr["html_url"]
+              print("📦 Новый Pull Request: <{url}|{title}>")
               send_slack_message(f"📦 Новый Pull Request: <{url}|{title}>")
               exit(0)
 
           # Если пришли через cron (schedule)
           prs = get_open_prs()
           for pr in prs:
+              
               number = pr["number"]
               title = pr["title"]
               url = pr["html_url"]
